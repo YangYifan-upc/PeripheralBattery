@@ -5,10 +5,9 @@
 ![托盘图标](docs/preview/tray.png)
 
 > **English** — A tiny Windows tray utility that shows the battery level of 2.4 GHz wireless
-> peripherals (Rapoo receivers) and Apple AirPods. It only *listens* — to the status frames the
-> device pushes on its vendor HID collection, and to the (unencrypted) Apple Proximity Pairing
-> BLE advertisement. No commands are ever sent, no network access, no background service.
-> Single self-contained 70 MB executable.
+> peripherals (currently Rapoo receivers). It only *listens* to the status frames the device pushes
+> on its vendor HID collection — no commands are ever sent, no network access, no background
+> service. Single self-contained 70 MB executable.
 
 ---
 
@@ -67,36 +66,23 @@
 | 设备 | 状态 |
 |---|---|
 | 雷柏 2.4G 接收器（VID `24AE`） | ✅ 已验证（`PID 1410`，鼠标） |
-| AirPods / AirPods Pro（蓝牙广播） | ✅ 已验证（耳机电量；充电盒未通过验证，不显示） |
 | 雷柏键盘 | ⬜ 未验证（网页驱动里键盘变体字段位置不同） |
 | 罗技 LIGHTSPEED（HID++） | ⬜ 未实现，有公开资料，相对好加 |
-| 其它品牌蓝牙耳机 | ⬜ 未实现（多数走各自的私有 GATT 特征） |
+| 蓝牙耳机（含 AirPods） | ❌ 已移除，原因见下 |
 | 其它 2.4G 接收器 | ❌ 多数读不到：只转发按键和位移，硬件本身不带电量数据 |
 
 新增一个品牌 = 抓一次它自己的协议 + 写一个解析器，不是改个开关就能通吃。
 
-### AirPods 是怎么读到的
+### 关于蓝牙耳机（已移除）
 
-AirPods 不实现标准蓝牙电池服务（实测 GATT 里没有 `0x180F`），苹果私有协议又要模拟 iPhone 握手。
-本程序走第三条路：**被动监听蓝牙广播**。
+V0.2.0 曾通过监听苹果蓝牙广播（Proximity Pairing，厂商数据 `0x004C` / 类型 `0x07`）读到 AirPods 的耳机电量，
+并与 iPhone 显示逐值核对过（90%/90% 一致）。
 
-AirPods 在开盖或连接时会发苹果的 Proximity Pairing 广播（厂商数据 `0x004C`，类型 `0x07`），明文带电量：
+撤掉的原因：广播里的蓝牙地址每轮随机，Windows 不提供它与已配对设备的对应关系（需要系统级 IRK 密钥），
+因此**无法确认读到的是不是用户自己那副**——办公楼里同型号设备一多就会串。宁可没有，也不显示不确定的数字。
 
-| 字节 | 含义 | 验证 |
-|---|---|---|
-| 3–4 | 机型（`0x0E20` = AirPods Pro） | ✅ 与实机一致 |
-| 5 | 状态位（佩戴/连接） | 未逐位验证 |
-| **6** | **两只耳机电量，各占一个半字节（0–10 → 0–100%）** | ✅ iPhone 显示 90%/90% 时该字节 `0x99` |
-| **7（低半字节）** | **充电盒电量，10% 一档且向下取整**（`0x0F` = 无数据） | ✅ 两次实测：iPhone 66% ↔ 值 6，59% ↔ 值 5 |
-| 7（高半字节） | 含义未知，实测恒为 11（超出电量范围） | 未使用 |
-
-因为盒电量只有 10% 一档，界面显示成区间（如「盒 50–59%」），不编精确值。
-
-这条广播是只读的：不连接、不配对、不改设备状态。
-
-**身份问题**：广播地址每轮随机，Windows 也不提供它与已配对设备的对应关系（需要系统级 IRK），
-所以程序用「本机是否正连着 AirPods」作为闸门——没连上就完全不显示，连上才展示，
-名称直接取系统里的配对名。同一时刻只保留信号最强的那副（门槛 −60 dBm）。
+协议细节记在这里供参考：`data[3..4]` 机型（大端，`0x0E20`=AirPods Pro）、
+`data[6]` 高低半字节为两只耳机电量（0–10 步进）、`data[7]` 低半字节为充电盒电量（10% 一档、向下取整）。
 
 ---
 

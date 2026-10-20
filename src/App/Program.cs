@@ -50,7 +50,6 @@ internal sealed class BatteryApp : Application
 {
     private AppSettings _settings = new();
     private DeviceMonitor? _monitor;
-    private BtBatteryWatcher? _btWatcher;
     private TrayHost? _tray;
     private FlyoutWindow? _flyout;
     private SettingsWindow? _settingsWindow;
@@ -93,9 +92,6 @@ internal sealed class BatteryApp : Application
         _monitor = new DeviceMonitor();
         _monitor.SetStaleSeconds(_settings.StaleSeconds);
         _monitor.Updated += OnDevicesUpdated;
-
-        _btWatcher = new BtBatteryWatcher(_monitor);
-        _btWatcher.Start();
 
         _tray = new TrayHost();
         _tray.SetAutoStartChecked(AutoStart.IsEnabled());
@@ -227,7 +223,6 @@ internal sealed class BatteryApp : Application
     protected override void OnExit(ExitEventArgs e)
     {
         Log.Info("退出清理");
-        try { _btWatcher?.Dispose(); } catch { }
         try { _monitor?.Dispose(); } catch { }
         try { _tray?.Dispose(); } catch { }
         try { IconRenderer.DisposeAll(); } catch { }
@@ -333,8 +328,6 @@ internal static class ScreenshotMode
         try
         {
             using var monitor = new DeviceMonitor();
-            using var bt = new BtBatteryWatcher(monitor);
-            bt.Start();
             Thread.Sleep(20000);   // 鼠标空闲时上报间隔可达数十秒，预览多等一会儿才能抓到
 
             var settings = AppSettings.Load();
@@ -444,8 +437,6 @@ internal static class ConsoleMode
         L($"采样 {seconds} 秒…");
 
         using var monitor = new DeviceMonitor();
-        using var bt = new BtBatteryWatcher(monitor);
-        bt.Start();
 
         var deadline = DateTime.Now.AddSeconds(seconds);
         // 等到「不再有新设备出现」再收工，避免只读到第一个设备就退出
@@ -472,8 +463,6 @@ internal static class ConsoleMode
             {
                 L($"设备: {d.Name}");
                 L($"  电量      : {d.PercentText}");
-                if (d.SubValues.Count > 1)
-                    L($"  分项      : {string.Join("  ", d.SubValues.Select(v => $"{v.label} {v.value}%"))}");
                 L($"  明细      : {d.DetailText}");
                 L($"  最后上报  : {d.LastSeen:HH:mm:ss}{(d.Stale ? "（已超时）" : "")}");
                 L($"  数据来源  : {d.SourcePath}");

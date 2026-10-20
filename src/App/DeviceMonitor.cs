@@ -89,10 +89,6 @@ internal sealed class DeviceView
     public string Note = "";
     /// <summary>给人看的一行明细，由各数据源自行拼装。</summary>
     public string DetailText = "";
-    /// <summary>多电池设备的附加读数（耳机左右耳、充电盒等）。</summary>
-    public List<(string label, int value)> SubValues = new();
-    /// <summary>该设备单独的休眠判定秒数，0 表示用全局设置。</summary>
-    public int StaleSecondsOverride;
 
     /// <summary>
     /// 状态字节 1 = 未充电（两次实测确认）。插上充电线时该字节变为其它值，
@@ -156,44 +152,8 @@ internal sealed class DeviceMonitor : IDisposable
         Key = d.Key, Name = d.Name, SourcePath = d.SourcePath, Percent = d.Percent,
         BatteryStatus = d.BatteryStatus, DpiX = d.DpiX, DpiY = d.DpiY, Rssi = d.Rssi,
         UsbPid = d.UsbPid, LastSeen = d.LastSeen, Stale = d.Stale, Note = d.Note,
-        DetailText = d.DetailText, SubValues = new List<(string, int)>(d.SubValues),
-        StaleSecondsOverride = d.StaleSecondsOverride
+        DetailText = d.DetailText
     };
-
-    /// <summary>其它数据源（蓝牙广播）把读数交进来，统一在这里合并与排序。</summary>
-    public void PublishExternal(DeviceView view, TimeSpan staleAfter)
-    {
-        bool changed = false;
-        lock (_gate)
-        {
-            if (!_devices.TryGetValue(view.Key, out var existing))
-            {
-                _devices[view.Key] = view;
-                changed = true;
-            }
-            else
-            {
-                if (existing.Percent != view.Percent) changed = true;
-                if (existing.DetailText != view.DetailText) changed = true;
-                if (existing.Stale) changed = true;
-                existing.Percent = view.Percent;
-                existing.Name = view.Name;
-                existing.DetailText = view.DetailText;
-                existing.SubValues = view.SubValues;
-                existing.LastSeen = view.LastSeen;
-                existing.Stale = false;
-                existing.StaleSecondsOverride = (int)staleAfter.TotalSeconds;
-            }
-        }
-        if (changed) Updated?.Invoke();
-    }
-
-    public void RemoveExternal(string key)
-    {
-        bool removed;
-        lock (_gate) removed = _devices.TryRemove(key, out _);
-        if (removed) Updated?.Invoke();
-    }
 
     private void SafeDiscover()
     {
@@ -300,8 +260,7 @@ internal sealed class DeviceMonitor : IDisposable
         {
             foreach (var d in _devices.Values)
             {
-                int limit = d.StaleSecondsOverride > 0 ? d.StaleSecondsOverride : _staleSeconds;
-                bool stale = (DateTime.Now - d.LastSeen).TotalSeconds > limit;
+                bool stale = (DateTime.Now - d.LastSeen).TotalSeconds > _staleSeconds;
                 if (d.Stale != stale) { d.Stale = stale; changed = true; }
             }
         }

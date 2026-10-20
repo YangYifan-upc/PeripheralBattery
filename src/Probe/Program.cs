@@ -8,46 +8,6 @@ internal static class Program
     {
         try { Console.OutputEncoding = Encoding.UTF8; } catch { /* 重定向时可能失败，忽略 */ }
 
-        if (args.Any(a => a.Equals("--bt-log", StringComparison.OrdinalIgnoreCase)))
-        {
-            int logSeconds = 600;
-            var ls = args.FirstOrDefault(a => a.StartsWith("--seconds=", StringComparison.OrdinalIgnoreCase));
-            if (ls != null && int.TryParse(ls["--seconds=".Length..], out int lv) && lv > 0 && lv <= 14400)
-                logSeconds = lv;
-
-            var pf = args.FirstOrDefault(a => a.StartsWith("--file=", StringComparison.OrdinalIgnoreCase));
-            string csv = pf != null ? pf["--file=".Length..] : Path.Combine(AppContext.BaseDirectory, "bt-log.csv");
-
-            string msg = await BtLogProbe.RunAsync(logSeconds, csv);
-            Console.WriteLine(msg);
-            return 0;
-        }
-
-        if (args.Any(a => a.Equals("--bt-scan", StringComparison.OrdinalIgnoreCase)))
-        {
-            int scanSeconds = 25;
-            var sa = args.FirstOrDefault(a => a.StartsWith("--seconds=", StringComparison.OrdinalIgnoreCase));
-            if (sa != null && int.TryParse(sa["--seconds=".Length..], out int sv) && sv > 0 && sv <= 180)
-                scanSeconds = sv;
-
-            string scanReport = await BtScanProbe.RunAsync(scanSeconds);
-            string scanPath = Path.Combine(AppContext.BaseDirectory, "bt-scan.txt");
-            try { File.WriteAllText(scanPath, scanReport, new UTF8Encoding(false)); } catch { }
-            Console.WriteLine(scanReport);
-            Console.WriteLine($"报告已写入: {scanPath}");
-            return 0;
-        }
-
-        if (args.Any(a => a.Equals("--bt", StringComparison.OrdinalIgnoreCase)))
-        {
-            string btReport = await BtProbe.RunAsync();
-            string btPath = Path.Combine(AppContext.BaseDirectory, "bt-report.txt");
-            try { File.WriteAllText(btPath, btReport, new UTF8Encoding(false)); } catch { }
-            Console.WriteLine(btReport);
-            Console.WriteLine($"报告已写入: {btPath}");
-            return 0;
-        }
-
         if (args.Any(a => a.Equals("--decode", StringComparison.OrdinalIgnoreCase)))
         {
             int seconds = 20;
