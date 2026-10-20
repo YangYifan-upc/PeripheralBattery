@@ -178,7 +178,7 @@ internal sealed class FlyoutWindow : Window
         }
 
         _title.Text = devices.Count > 0 ? $"外设电量（{devices.Count}）" : "外设电量";
-        _footer.Text = "数据来自设备主动上报，约每 3 秒刷新一次 · 只读，不修改设备";
+        _footer.Text = "数据来自设备主动上报与蓝牙广播 · 只读，不修改设备";
     }
 
     private static UIElement BuildRow(DeviceView device, AppSettings settings)
@@ -214,7 +214,7 @@ internal sealed class FlyoutWindow : Window
         panel.Children.Add(BuildBar(device));
 
         string detail = device.Percent.HasValue
-            ? $"{device.ChargeText} · DPI {device.DpiX}×{device.DpiY} · 信号 {device.Rssi}"
+            ? (string.IsNullOrEmpty(device.DetailText) ? "设备主动上报" : device.DetailText)
             : "该设备未提供电量数据";
         if (device.Stale) detail = $"设备暂无上报（可能休眠或已关闭）· 最后读数 {device.LastSeen:HH:mm}";
 
@@ -326,7 +326,7 @@ internal sealed class SettingsWindow : Window
 
     public SettingsWindow(AppSettings current)
     {
-        Title = "设置 · PeripheralBattery V0.1.0";
+        Title = "设置 · PeripheralBattery V0.2.0";
         Width = 420;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -386,7 +386,7 @@ internal sealed class SettingsWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = "PeripheralBattery V0.1.0 · 只读监视，不向设备发送任何命令",
+            Text = "PeripheralBattery V0.2.0 · 只读监视，不向设备发送任何命令",
             FontSize = 11,
             Foreground = Theme.Text2,
             Margin = new Thickness(0, 16, 0, 0)

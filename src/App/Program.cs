@@ -50,6 +50,7 @@ internal sealed class BatteryApp : Application
 {
     private AppSettings _settings = new();
     private DeviceMonitor? _monitor;
+    private BtBatteryWatcher? _btWatcher;
     private TrayHost? _tray;
     private FlyoutWindow? _flyout;
     private SettingsWindow? _settingsWindow;
@@ -78,7 +79,7 @@ internal sealed class BatteryApp : Application
         base.OnStartup(e);
         Paths.Ensure();
         Log.Cleanup();
-        Log.Info($"启动 V0.1.0，参数: {string.Join(' ', e.Args)}");
+        Log.Info($"启动 V0.2.0，参数: {string.Join(' ', e.Args)}");
 
         _single = new SingleInstance();
         if (!_single.TryAcquire())
@@ -92,6 +93,9 @@ internal sealed class BatteryApp : Application
         _monitor = new DeviceMonitor();
         _monitor.SetStaleSeconds(_settings.StaleSeconds);
         _monitor.Updated += OnDevicesUpdated;
+
+        _btWatcher = new BtBatteryWatcher(_monitor);
+        _btWatcher.Start();
 
         _tray = new TrayHost();
         _tray.SetAutoStartChecked(AutoStart.IsEnabled());
@@ -223,6 +227,7 @@ internal sealed class BatteryApp : Application
     protected override void OnExit(ExitEventArgs e)
     {
         Log.Info("退出清理");
+        try { _btWatcher?.Dispose(); } catch { }
         try { _monitor?.Dispose(); } catch { }
         try { _tray?.Dispose(); } catch { }
         try { IconRenderer.DisposeAll(); } catch { }
@@ -328,6 +333,8 @@ internal static class ScreenshotMode
         try
         {
             using var monitor = new DeviceMonitor();
+            using var bt = new BtBatteryWatcher(monitor);
+            bt.Start();
             Thread.Sleep(7000);
 
             var settings = AppSettings.Load();
@@ -433,14 +440,24 @@ internal static class ConsoleMode
         var sb = new StringBuilder();
         void L(string text = "") => sb.AppendLine(text);
 
-        L($"PeripheralBattery V0.1.0  只读读数核对   {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        L($"PeripheralBattery V0.2.0  只读读数核对   {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         L($"采样 {seconds} 秒…");
 
         using var monitor = new DeviceMonitor();
+        using var bt = new BtBatteryWatcher(monitor);
+        bt.Start();
+
         var deadline = DateTime.Now.AddSeconds(seconds);
-        // 设备空闲时上报间隔 3~9 秒，只要读到一台就提前收工
-        while (DateTime.Now < deadline && monitor.Snapshot().Count == 0) Thread.Sleep(200);
-        if (monitor.Snapshot().Count > 0) Thread.Sleep(300);
+        // 等到「不再有新设备出现」再收工，避免只读到第一个设备就退出
+        var lastChange = DateTime.Now;
+        int lastCount = -1;
+        while (DateTime.Now < deadline)
+        {
+            Thread.Sleep(200);
+            int count = monitor.Snapshot().Count;
+            if (count != lastCount) { lastCount = count; lastChange = DateTime.Now; }
+            if (count > 0 && (DateTime.Now - lastChange).TotalSeconds > 5) break;
+        }
 
         var devices = monitor.Snapshot();
         L();
@@ -455,9 +472,9 @@ internal static class ConsoleMode
             {
                 L($"设备: {d.Name}");
                 L($"  电量      : {d.PercentText}");
-                L($"  充电状态  : {d.ChargeText}（原始值 {d.BatteryStatus}）");
-                L($"  DPI       : {d.DpiX} x {d.DpiY}");
-                L($"  信号强度  : {d.Rssi}");
+                if (d.SubValues.Count > 1)
+                    L($"  分项      : {string.Join("  ", d.SubValues.Select(v => $"{v.label} {v.value}%"))}");
+                L($"  明细      : {d.DetailText}");
                 L($"  最后上报  : {d.LastSeen:HH:mm:ss}{(d.Stale ? "（已超时）" : "")}");
                 L($"  数据来源  : {d.SourcePath}");
                 L();

@@ -5,9 +5,10 @@
 ![托盘图标](docs/preview/tray.png)
 
 > **English** — A tiny Windows tray utility that shows the battery level of 2.4 GHz wireless
-> peripherals (currently Rapoo receivers). It only *listens* to the status frames the device
-> pushes on its vendor HID collection — no commands are ever sent, no network access, no
-> background service. Single self-contained 64 MB executable.
+> peripherals (Rapoo receivers) and Apple AirPods. It only *listens* — to the status frames the
+> device pushes on its vendor HID collection, and to the (unencrypted) Apple Proximity Pairing
+> BLE advertisement. No commands are ever sent, no network access, no background service.
+> Single self-contained 70 MB executable.
 
 ---
 
@@ -66,12 +67,30 @@
 | 设备 | 状态 |
 |---|---|
 | 雷柏 2.4G 接收器（VID `24AE`） | ✅ 已验证（`PID 1410`，鼠标） |
+| AirPods / AirPods Pro（蓝牙广播） | ✅ 已验证（耳机电量；充电盒未通过验证，不显示） |
 | 雷柏键盘 | ⬜ 未验证（网页驱动里键盘变体字段位置不同） |
 | 罗技 LIGHTSPEED（HID++） | ⬜ 未实现，有公开资料，相对好加 |
-| 蓝牙键鼠 / 耳机 | ⬜ 未实现（需要走 BLE 电池服务 `0x180F`） |
+| 其它品牌蓝牙耳机 | ⬜ 未实现（多数走各自的私有 GATT 特征） |
 | 其它 2.4G 接收器 | ❌ 多数读不到：只转发按键和位移，硬件本身不带电量数据 |
 
 新增一个品牌 = 抓一次它自己的协议 + 写一个解析器，不是改个开关就能通吃。
+
+### AirPods 是怎么读到的
+
+AirPods 不实现标准蓝牙电池服务（实测 GATT 里没有 `0x180F`），苹果私有协议又要模拟 iPhone 握手。
+本程序走第三条路：**被动监听蓝牙广播**。
+
+AirPods 在开盖或连接时会发苹果的 Proximity Pairing 广播（厂商数据 `0x004C`，类型 `0x07`），明文带电量：
+
+| 字节 | 含义 | 验证 |
+|---|---|---|
+| 3–4 | 机型（`0x0E20` = AirPods Pro） | ✅ 与实机一致 |
+| 5 | 状态位（佩戴/连接） | 未逐位验证 |
+| **6** | **两只耳机电量，各占一个半字节（0–10 → 0–100%）** | ✅ iPhone 显示 90%/90% 时该字节 `0x99` |
+| 7 | 公开资料称高半字节是充电盒电量 | ❌ 解析出 80%，iPhone 同期 66%，故**不显示** |
+
+这条广播是只读的：不连接、不配对、不改设备状态。局限是广播不含身份（地址每轮随机），
+附近有多副同款时程序锁定信号最强的那副，并在面板里显示信号强度供核对。
 
 ---
 
