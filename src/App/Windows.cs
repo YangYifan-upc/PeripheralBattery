@@ -42,7 +42,6 @@ internal static class Theme
 internal sealed class FlyoutWindow : Window
 {
     private readonly StackPanel _list = new();
-    private readonly TextBlock _footer;
     private readonly TextBlock _title;
 
     public event Action? RefreshRequested;
@@ -108,17 +107,8 @@ internal sealed class FlyoutWindow : Window
         outer.Children.Add(header);
         outer.Children.Add(new Border { Height = 1, Background = Theme.Border, Margin = new Thickness(12, 0, 12, 0) });
 
-        _list.Margin = new Thickness(12, 6, 12, 6);
+        _list.Margin = new Thickness(12, 6, 12, 12);
         outer.Children.Add(_list);
-
-        _footer = new TextBlock
-        {
-            FontSize = 11,
-            Foreground = Theme.Text2,
-            Margin = new Thickness(16, 2, 16, 12),
-            TextWrapping = TextWrapping.Wrap
-        };
-        outer.Children.Add(_footer);
 
         root.Child = outer;
         Content = root;
@@ -178,7 +168,6 @@ internal sealed class FlyoutWindow : Window
         }
 
         _title.Text = devices.Count > 0 ? $"外设电量（{devices.Count}）" : "外设电量";
-        _footer.Text = "数据来自设备主动上报与蓝牙广播 · 只读，不修改设备";
     }
 
     private static UIElement BuildRow(DeviceView device, AppSettings settings)
@@ -218,13 +207,40 @@ internal sealed class FlyoutWindow : Window
             : "该设备未提供电量数据";
         if (device.Stale) detail = $"设备暂无上报（可能休眠或已关闭）· 最后读数 {device.LastSeen:HH:mm}";
 
-        panel.Children.Add(new TextBlock
+        // 充电中时在明细行前面加一个绿色闪电
+        var detailRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 5, 0, 0)
+        };
+
+        if (!device.Stale && device.BatteryStatus > 1)
+        {
+            // 矢量闪电：用 Viewbox 固定比例缩放，避免字形被压扁
+            var bolt = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M10,0 L0,15 H6 L3,26 L16,9 H9 Z"),
+                Fill = Theme.Green
+            };
+            detailRow.Children.Add(new Viewbox
+            {
+                Width = 9,
+                Height = 12,
+                Margin = new Thickness(0, 0, 4, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = bolt
+            });
+        }
+
+        detailRow.Children.Add(new TextBlock
         {
             Text = detail,
             FontSize = 11,
             Foreground = Theme.Text2,
-            Margin = new Thickness(0, 5, 0, 0)
+            VerticalAlignment = VerticalAlignment.Center
         });
+
+        panel.Children.Add(detailRow);
 
         if (device.Percent is { } p && p <= settings.LowThreshold)
         {

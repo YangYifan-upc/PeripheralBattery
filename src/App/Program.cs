@@ -335,7 +335,7 @@ internal static class ScreenshotMode
             using var monitor = new DeviceMonitor();
             using var bt = new BtBatteryWatcher(monitor);
             bt.Start();
-            Thread.Sleep(7000);
+            Thread.Sleep(20000);   // 鼠标空闲时上报间隔可达数十秒，预览多等一会儿才能抓到
 
             var settings = AppSettings.Load();
             var devices = monitor.Snapshot();
