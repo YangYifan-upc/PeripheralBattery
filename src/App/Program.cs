@@ -78,7 +78,7 @@ internal sealed class BatteryApp : Application
         base.OnStartup(e);
         Paths.Ensure();
         Log.Cleanup();
-        Log.Info($"启动 V0.2.1，参数: {string.Join(' ', e.Args)}");
+        Log.Info($"启动 V0.3.0，参数: {string.Join(' ', e.Args)}");
 
         _single = new SingleInstance();
         if (!_single.TryAcquire())
@@ -433,7 +433,7 @@ internal static class ConsoleMode
         var sb = new StringBuilder();
         void L(string text = "") => sb.AppendLine(text);
 
-        L($"PeripheralBattery V0.2.1  只读读数核对   {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        L($"PeripheralBattery V0.3.0  只读读数核对   {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         L($"采样 {seconds} 秒…");
 
         using var monitor = new DeviceMonitor();
