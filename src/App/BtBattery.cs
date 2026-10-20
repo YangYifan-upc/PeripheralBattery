@@ -58,13 +58,24 @@ internal sealed class BtLinkState : IDisposable
             foreach (var info in infos)
             {
                 if (!LooksLikeAppleAudio(info.Name)) continue;
+
+                // BluetoothDevice 持有原生句柄，必须 Dispose，
+                // 否则每 5 秒累积若干个（实测 30 秒涨 50 个句柄）
                 BluetoothDevice? bt = null;
                 try { bt = await BluetoothDevice.FromIdAsync(info.Id); } catch { }
-                if (bt?.ConnectionStatus == BluetoothConnectionStatus.Connected)
+                if (bt == null) continue;
+
+                try
                 {
-                    found = CleanName(bt.Name);
-                    break;
+                    if (bt.ConnectionStatus == BluetoothConnectionStatus.Connected)
+                        found = CleanName(bt.Name);
                 }
+                finally
+                {
+                    bt.Dispose();
+                }
+
+                if (found.Length > 0) break;
             }
 
             bool changed;
