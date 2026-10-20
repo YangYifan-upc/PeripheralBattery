@@ -23,6 +23,83 @@ namespace PeripheralBattery;
 /// 局限：广播不含设备唯一身份（蓝牙地址每轮随机），附近有多副同款时无法精确区分，
 /// 只能锁定信号最强的那副；界面标注"蓝牙广播"，信号强度一并显示供核对。
 /// </summary>
+
+/// <summary>
+/// 判断"本机是否连着一副苹果耳机"。广播地址每轮随机，无法与已配对设备精确对应
+/// （那需要 IRK 密钥，属系统级数据），因此改用这条连接状态作为闸门：
+/// 只有电脑确实连着 AirPods 时才展示广播电量，避免在你没连耳机时显示隔壁的耳机。
+/// </summary>
+internal sealed class BtLinkState : IDisposable
+{
+    private readonly object _gate = new();
+    private readonly System.Threading.Timer _timer;
+    private bool _connected;
+    private string _name = "";
+    private bool _refreshing;
+
+    public BtLinkState()
+    {
+        _timer = new System.Threading.Timer(_ => Refresh(), null, 0, 5000);
+    }
+
+    public bool IsConnected { get { lock (_gate) return _connected; } }
+    public string DeviceName { get { lock (_gate) return _name; } }
+
+    private async void Refresh()
+    {
+        if (_refreshing) return;
+        _refreshing = true;
+        try
+        {
+            string found = "";
+            var infos = await Windows.Devices.Enumeration.DeviceInformation.FindAllAsync(
+                BluetoothDevice.GetDeviceSelector());
+
+            foreach (var info in infos)
+            {
+                if (!LooksLikeAppleAudio(info.Name)) continue;
+                BluetoothDevice? bt = null;
+                try { bt = await BluetoothDevice.FromIdAsync(info.Id); } catch { }
+                if (bt?.ConnectionStatus == BluetoothConnectionStatus.Connected)
+                {
+                    found = CleanName(bt.Name);
+                    break;
+                }
+            }
+
+            bool changed;
+            lock (_gate)
+            {
+                changed = _connected != (found.Length > 0) || _name != found;
+                _connected = found.Length > 0;
+                _name = found;
+            }
+            if (changed) Log.Info(found.Length > 0 ? $"蓝牙耳机已连接: {found}" : "蓝牙耳机未连接，暂停展示广播电量");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("查询蓝牙连接状态失败: " + ex.Message);
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private static bool LooksLikeAppleAudio(string name) =>
+        name.Contains("AirPods", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Beats", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("HomePod", StringComparison.OrdinalIgnoreCase);
+
+    private static string CleanName(string name) =>
+        name.Replace(" - Find My", "", StringComparison.OrdinalIgnoreCase).Trim();
+
+    public void Dispose()
+    {
+        try { _timer.Dispose(); } catch { }
+    }
+}
+
 internal sealed class BtBatteryWatcher : IDisposable
 {
     private const short MinRssi = -60;        // 更弱的多半是邻居的设备，宁可少列也不列错
@@ -35,6 +112,7 @@ internal sealed class BtBatteryWatcher : IDisposable
     private int _publishedKey = -1;
     private readonly object _gate = new();
     private readonly System.Threading.Timer _sweepTimer;
+    private readonly BtLinkState _link;
 
     private ulong? _lockedAddress;
     private DateTime _lockedAt = DateTime.MinValue;
@@ -57,7 +135,8 @@ internal sealed class BtBatteryWatcher : IDisposable
             ScanningMode = BluetoothLEScanningMode.Active
         };
         _watcher.Received += OnReceived;
-        _sweepTimer = new System.Threading.Timer(_ => { try { Sweep(); } catch { } }, null, 10000, 10000);
+        _link = new BtLinkState();
+        _sweepTimer = new System.Threading.Timer(_ => { try { Sweep(); } catch { } }, null, 5000, 5000);
     }
 
     public void Start()
@@ -112,7 +191,8 @@ internal sealed class BtBatteryWatcher : IDisposable
                     keep = PickLocked();
                 }
 
-                if (keep != null) Publish(keep);
+                // 只有本机确实连着苹果耳机时才展示；否则可能是在显示隔壁工位那副
+                if (keep != null && _link.IsConnected) Publish(keep);
             }
         }
         catch (Exception ex)
@@ -174,7 +254,7 @@ internal sealed class BtBatteryWatcher : IDisposable
         var view = new DeviceView
         {
             Key = "bt:active",
-            Name = $"{ModelName(entry.Model)}（蓝牙）",
+            Name = _link.DeviceName is { Length: > 0 } n ? n : $"{ModelName(entry.Model)}（蓝牙）",
             SourcePath = "bluetooth-advertisement",
             Percent = percent,
             LastSeen = DateTime.Now,
@@ -214,8 +294,8 @@ internal sealed class BtBatteryWatcher : IDisposable
                 }
             }
 
-            // 一副都收不到了才从面板移除
-            if (_entries.Count == 0 && _publishedKey != -1)
+            // 断开连接或一副都收不到了，就从面板移除
+            if ((_entries.Count == 0 || !_link.IsConnected) && _publishedKey != -1)
             {
                 _publishedKey = -1;
                 _sink.RemoveExternal("bt:active");
@@ -233,6 +313,7 @@ internal sealed class BtBatteryWatcher : IDisposable
     public void Dispose()
     {
         try { _sweepTimer.Dispose(); } catch { }
+        try { _link.Dispose(); } catch { }
         try
         {
             if (_watcher.Status == BluetoothLEAdvertisementWatcherStatus.Started) _watcher.Stop();
