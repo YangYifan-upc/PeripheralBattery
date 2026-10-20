@@ -11,9 +11,9 @@
     <RootNamespace>PeripheralBattery</RootNamespace>
     <AssemblyName>PeripheralBattery</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.2.0</Version>
-    <FileVersion>0.2.0.0</FileVersion>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <Version>0.2.1</Version>
+    <FileVersion>0.2.1.0</FileVersion>
+    <AssemblyVersion>0.2.1.0</AssemblyVersion>
     <Product>PeripheralBattery</Product>
     <AssemblyTitle>外设电量监视器</AssemblyTitle>
     <DebugType>none</DebugType>

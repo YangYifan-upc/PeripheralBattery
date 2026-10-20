@@ -8,6 +8,21 @@ internal static class Program
     {
         try { Console.OutputEncoding = Encoding.UTF8; } catch { /* 重定向时可能失败，忽略 */ }
 
+        if (args.Any(a => a.Equals("--bt-log", StringComparison.OrdinalIgnoreCase)))
+        {
+            int logSeconds = 600;
+            var ls = args.FirstOrDefault(a => a.StartsWith("--seconds=", StringComparison.OrdinalIgnoreCase));
+            if (ls != null && int.TryParse(ls["--seconds=".Length..], out int lv) && lv > 0 && lv <= 14400)
+                logSeconds = lv;
+
+            var pf = args.FirstOrDefault(a => a.StartsWith("--file=", StringComparison.OrdinalIgnoreCase));
+            string csv = pf != null ? pf["--file=".Length..] : Path.Combine(AppContext.BaseDirectory, "bt-log.csv");
+
+            string msg = await BtLogProbe.RunAsync(logSeconds, csv);
+            Console.WriteLine(msg);
+            return 0;
+        }
+
         if (args.Any(a => a.Equals("--bt-scan", StringComparison.OrdinalIgnoreCase)))
         {
             int scanSeconds = 25;

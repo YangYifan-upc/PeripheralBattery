@@ -326,7 +326,7 @@ internal sealed class SettingsWindow : Window
 
     public SettingsWindow(AppSettings current)
     {
-        Title = "设置 · PeripheralBattery V0.2.0";
+        Title = "设置 · PeripheralBattery V0.2.1";
         Width = 420;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -386,7 +386,7 @@ internal sealed class SettingsWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = "PeripheralBattery V0.2.0 · 只读监视，不向设备发送任何命令",
+            Text = "PeripheralBattery V0.2.1 · 只读监视，不向设备发送任何命令",
             FontSize = 11,
             Foreground = Theme.Text2,
             Margin = new Thickness(0, 16, 0, 0)

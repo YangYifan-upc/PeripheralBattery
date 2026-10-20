@@ -347,7 +347,7 @@ internal sealed class TrayHost : IDisposable
 
         var aboutItem = new WinForms.ToolStripMenuItem("关于");
         aboutItem.Click += (_, _) => WinForms.MessageBox.Show(
-            "PeripheralBattery V0.2.0\n\n外设电量监视器（只读）\n" +
+            "PeripheralBattery V0.2.1\n\n外设电量监视器（只读）\n" +
             "数据来源：设备主动上报的状态帧\n" +
             "不发送任何控制命令，不修改设备设置",
             "关于", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);

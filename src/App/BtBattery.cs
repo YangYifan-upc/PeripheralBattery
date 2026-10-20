@@ -13,23 +13,26 @@ namespace PeripheralBattery;
 /// - BLE 标准电池服务 0x180F：AirPods 不提供，实测 GATT 里没有
 /// - 苹果私有 L2CAP 协议：要模拟 iPhone 握手，工作量大且不稳定
 ///
-/// 已验证：第 [6] 字节的高/低半字节 = 两只耳机电池，10% 步长；与 iPhone 显示一致。
-/// 未采用：第 [7] 字节高半字节解析出来是 80%，而 iPhone 同期显示 66%——对不上，
-///        因此充电盒电量不显示，宁可空着也不给错数。
+/// 已验证：
+/// - 第 [6] 字节高/低半字节 = 两只耳机电池，10% 步长，与 iPhone 显示一致
+/// - 第 [7] 字节**低**半字节 = 充电盒电池，同样是 10% 一档且向下取整
+///   （实测两次：iPhone 显示 66% 时该值为 6，显示 59% 时该值为 5），
+///   因此充电盒只能给出「50–59%」这样的区间，不显示精确值。
+///   第 [7] 字节高半字节含义未知（实测恒为 11，超出电量范围），未使用。
 ///
 /// 局限：广播不含设备唯一身份（蓝牙地址每轮随机），附近有多副同款时无法精确区分，
 /// 只能锁定信号最强的那副；界面标注"蓝牙广播"，信号强度一并显示供核对。
 /// </summary>
 internal sealed class BtBatteryWatcher : IDisposable
 {
-    private const short MinRssi = -70;        // 更弱的多半是邻居的设备
+    private const short MinRssi = -60;        // 更弱的多半是邻居的设备，宁可少列也不列错
     private const int StaleSeconds = 150;     // 耳机合盖后停止广播，给足宽限
     private const int LockSeconds = 20;       // 锁定当前设备的时间，避免在几副耳机间跳
 
     private readonly BluetoothLEAdvertisementWatcher _watcher;
     private readonly DeviceMonitor _sink;
     private readonly Dictionary<ulong, Entry> _entries = new();
-    private readonly HashSet<int> _publishedModels = new();
+    private int _publishedKey = -1;
     private readonly object _gate = new();
     private readonly System.Threading.Timer _sweepTimer;
 
@@ -41,6 +44,7 @@ internal sealed class BtBatteryWatcher : IDisposable
         public ulong Address;
         public int Model;
         public int BudA = 0x0F, BudB = 0x0F;
+        public int CaseNibble = 0x0F;
         public short Rssi;
         public DateTime LastSeen = DateTime.Now;
     }
@@ -87,7 +91,8 @@ internal sealed class BtBatteryWatcher : IDisposable
                 int model = data[3] << 8 | data[4];
                 int budA = data[6] >> 4;
                 int budB = data[6] & 0x0F;
-                if (budA > 10 && budB > 10) continue;   // 两只都没数据，跳过
+                int caseNibble = data[7] & 0x0F;
+                if (budA > 10 && budB > 10 && caseNibble > 10) continue;
 
                 Entry? keep = null;
                 lock (_gate)
@@ -100,6 +105,7 @@ internal sealed class BtBatteryWatcher : IDisposable
                     }
                     entry.BudA = budA;
                     entry.BudB = budB;
+                    entry.CaseNibble = caseNibble;
                     entry.Rssi = args.RawSignalStrengthInDBm;
                     entry.LastSeen = DateTime.Now;
 
@@ -158,11 +164,16 @@ internal sealed class BtBatteryWatcher : IDisposable
                 : $"耳机 {entry.BudA * 10}% / {entry.BudB * 10}%");
         else
             detail.Append($"耳机 {percent}%");
+
+        // 充电盒电量：实测为第 7 字节的低半字节，10% 一档（向下取整），只能给区间
+        if (entry.CaseNibble <= 10)
+            detail.Append($" · 盒 {entry.CaseNibble * 10}–{entry.CaseNibble * 10 + 9}%");
+
         detail.Append($" · 蓝牙广播 · 信号 {entry.Rssi}");
 
         var view = new DeviceView
         {
-            Key = $"bt:{entry.Model}",
+            Key = "bt:active",
             Name = $"{ModelName(entry.Model)}（蓝牙）",
             SourcePath = "bluetooth-advertisement",
             Percent = percent,
@@ -173,8 +184,11 @@ internal sealed class BtBatteryWatcher : IDisposable
 
         lock (_gate)
         {
-            if (_publishedModels.Add(entry.Model))
+            if (_publishedKey != entry.Model)
+            {
+                _publishedKey = entry.Model;
                 Log.Info($"蓝牙设备已加入面板: 0x{entry.Model:X4}");
+            }
         }
 
         _sink.PublishExternal(view, TimeSpan.FromSeconds(StaleSeconds));
@@ -200,13 +214,12 @@ internal sealed class BtBatteryWatcher : IDisposable
                 }
             }
 
-            // 某个机型彻底没有广播了，才从面板移除
-            var liveModels = _entries.Values.Select(e => e.Model).ToHashSet();
-            foreach (int model in _publishedModels.Where(m => !liveModels.Contains(m)).ToList())
+            // 一副都收不到了才从面板移除
+            if (_entries.Count == 0 && _publishedKey != -1)
             {
-                _publishedModels.Remove(model);
-                _sink.RemoveExternal($"bt:{model}");
-                Log.Info($"蓝牙设备已离开: 0x{model:X4}");
+                _publishedKey = -1;
+                _sink.RemoveExternal("bt:active");
+                Log.Info("蓝牙耳机已无广播，从面板移除");
             }
         }
     }

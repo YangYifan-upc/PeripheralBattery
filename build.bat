@@ -5,7 +5,7 @@ set "ROOT=%~dp0"
 set "DOTNET=%USERPROFILE%\.dotnet\dotnet.exe"
 
 echo ========================================
-echo   PeripheralBattery V0.2.0  构建脚本
+echo   PeripheralBattery V0.2.1  构建脚本
 echo ========================================
 echo.
 
